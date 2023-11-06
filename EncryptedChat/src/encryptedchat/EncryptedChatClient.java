@@ -14,6 +14,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.Arrays;
+import java.util.Base64;
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
@@ -153,5 +154,33 @@ class ClientReceiver implements Runnable {
             ex.printStackTrace();
         }
         
+    }
+
+    public String EncryptMessage(String message) {
+        String encryptedMessage = null;
+        try {
+            Cipher cipher = Cipher.getInstance("AES");
+            cipher.init(Cipher.ENCRYPT_MODE, aesKey);
+            byte[] encryptedBytes = cipher.doFinal(message.getBytes());
+            encryptedMessage = Base64.getEncoder().encodeToString(encryptedBytes);
+
+        } catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException | BadPaddingException ex) {
+            ex.printStackTrace();
+        }
+        return encryptedMessage;
+    }
+
+    public String DecryptMessage(String message) {
+        String decryptedMessage = null;
+        try {
+            Cipher cipher = Cipher.getInstance("AES");
+            cipher.init(Cipher.DECRYPT_MODE, aesKey);
+            byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(message));
+            decryptedMessage = new String(decryptedBytes);
+
+        } catch (IllegalBlockSizeException | BadPaddingException | InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException ex) {
+            ex.printStackTrace();
+        }
+        return decryptedMessage;
     }
 }

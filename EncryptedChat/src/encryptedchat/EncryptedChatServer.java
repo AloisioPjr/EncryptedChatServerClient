@@ -15,13 +15,11 @@ import java.io.PrintWriter;
 import static java.lang.System.exit;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.util.Arrays;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.Base64;
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
@@ -106,9 +104,13 @@ class ClientHandler implements Runnable {
     public static SecretKey AESKeyGenerator() {
         SecretKey aesKey = null;
         try {
-            
+            // Choose the algorithm (AES) and initialize the KeyGenerator
             KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+
+            // Set the key size (128, 192, or 256 bits)
             keyGenerator.init(256);
+
+            // Generate the AES key
             aesKey = keyGenerator.generateKey();
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
@@ -160,5 +162,33 @@ class ClientHandler implements Runnable {
         } catch (IOException ex) {
             ex.printStackTrace();
         }
+    }
+
+    public String EncryptMessage(String message) {
+        String encryptedMessage = null;
+        try {
+            Cipher cipher = Cipher.getInstance("AES");
+            cipher.init(Cipher.ENCRYPT_MODE, aesKey);
+            byte[] encryptedBytes = cipher.doFinal(message.getBytes());
+            encryptedMessage = Base64.getEncoder().encodeToString(encryptedBytes);
+
+        } catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException | BadPaddingException ex) {
+            ex.printStackTrace();
+        }
+        return encryptedMessage;
+    }
+
+    public String DecryptMessage(String message) {
+        String decryptedMessage = null;
+        try {
+            Cipher cipher = Cipher.getInstance("AES");
+            cipher.init(Cipher.DECRYPT_MODE, aesKey);
+            byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(message));
+            decryptedMessage = new String(decryptedBytes);
+
+        } catch (IllegalBlockSizeException | BadPaddingException | InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException ex) {
+            ex.printStackTrace();
+        }
+        return decryptedMessage;
     }
 }
