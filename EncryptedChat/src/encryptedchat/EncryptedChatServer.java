@@ -5,12 +5,14 @@
 package encryptedchat;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import static java.lang.System.exit;
 import java.net.ServerSocket;
@@ -20,6 +22,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Scanner;
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
@@ -40,7 +43,7 @@ public class EncryptedChatServer {
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("Client connected: " + clientSocket.getInetAddress().getHostAddress());
+                //System.out.println("Client connected: " + clientSocket.getInetAddress().getHostAddress());
 
                 /*ClientHandler clientHandler = new ClientHandler(clientSocket);
                 Thread thread = new Thread(clientHandler);
@@ -56,21 +59,19 @@ public class EncryptedChatServer {
 
 class ClientHandler implements Runnable {
 
-    private Socket clientSocket;
+    private Socket socket;
     private BufferedReader reader;
-    private PrintWriter writer;
-    private ObjectOutputStream objectOutputStream;
+    
     private ObjectInputStream objectInputStream;
     private SecretKey aesKey;
+    private BufferedWriter writer;
 
     public ClientHandler(Socket socket) {
-        this.clientSocket = socket;
+        this.socket = socket;
         try {
-            reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-            writer = new PrintWriter(clientSocket.getOutputStream(), true);
-
-            objectOutputStream = new ObjectOutputStream(clientSocket.getOutputStream());//to send
-            objectInputStream = new ObjectInputStream(socket.getInputStream());//to receive
+            reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+            objectInputStream = new ObjectInputStream(socket.getInputStream());//to receive the public key
 
             //System.out.println(Base64.getEncoder().encodeToString(AESKeyEncryptor()));
         } catch (IOException e) {
@@ -81,41 +82,68 @@ class ClientHandler implements Runnable {
     @Override
     public void run() {
         SendEncryptedAESKey();
-
-        try {
-
-            String message = reader.readLine();
-            //if !(message.toLowerCase().trim().equals("exit"))||
-            while (((message != null))) {
-                System.out.println("Received: " + message);
-                // Broadcast the message to all clients
-                // Modify this part to send messages to spe cific clients if needed
+        listenForMessage();
+        System.out.println("A new client has connected to the server.");
+        Scanner scanner = new Scanner(System.in);
+        String message;
+        while (socket.isConnected()) {
+            try {
+                message = scanner.nextLine();
+                writer.write(EncryptMessage("Server: "+message));
+                writer.newLine();
+                writer.flush();
+            } catch (IOException ex) {
+                ex.printStackTrace();
             }
+        }
+    }
 
-            if (message.equals("exit")) {
+    public void listenForMessage() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String msgFromGroupChat;
+                while (socket.isConnected()) {
+                    try {
+                        msgFromGroupChat = reader.readLine();
+                        System.out.println(DecryptMessage(msgFromGroupChat));
+                    } catch (IOException e) {
+                        closeEverything(socket, reader, writer);
 
-                exit(0);
+                    }
+                }
+            }
+        }).start();
+
+    }
+
+    private void closeEverything(Socket socket, BufferedReader reader, BufferedWriter bwriter) {
+        try {
+            //check if the resources (socket, reader, writer) are still valid before closing them
+            if (reader != null) {//
+                reader.close();
+            }
+            if (bwriter != null) {
+                bwriter.close();
+            }
+            if (socket != null) {
+                socket.close();
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            e.printStackTrace(); // Print the stack trace if an IO exception occurs while closing resources
         }
     }
 
     public static SecretKey AESKeyGenerator() {
         SecretKey aesKey = null;
-        try {
-            // Choose the algorithm (AES) and initialize the KeyGenerator
+        try {  
             KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
-
-            // Set the key size (128, 192, or 256 bits)
             keyGenerator.init(256);
-
-            // Generate the AES key
             aesKey = keyGenerator.generateKey();
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
-        System.out.println("aesKey----->" + aesKey);
+        //System.out.println("aesKey----->" + aesKey);
         return aesKey;
     }
 
@@ -126,11 +154,11 @@ class ClientHandler implements Runnable {
         } catch (IOException | ClassNotFoundException ex) {
             ex.printStackTrace();
         }
-        System.out.println("receivedPublicKey----->" + receivedPublicKey);
+        //System.out.println("receivedPublicKey----->" + receivedPublicKey);
         return receivedPublicKey;
     }
 
-    public byte[] AESKeyEncryptor() {
+    public String AESKeyEncryptor() {
 
         try {
             aesKey = AESKeyGenerator();
@@ -139,10 +167,10 @@ class ClientHandler implements Runnable {
             Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
             cipher.init(Cipher.ENCRYPT_MODE, receivedPublicKey);
             byte[] encryptedAESKeyBytes = cipher.doFinal(aesKey.getEncoded());//TODO: try changing to .getBytes()
-
-            System.out.println("encryptedAESKeyBytes----->" + Arrays.toString( encryptedAESKeyBytes));
-
-            return encryptedAESKeyBytes;
+            String encryptedAESKeyString = Base64.getEncoder().encodeToString(encryptedAESKeyBytes);
+            //System.out.println("encryptedAESKeyBytes----->" + Arrays.toString(encryptedAESKeyBytes));
+            //System.out.println("encryptedAESKeyString----->" + (encryptedAESKeyString));
+            return encryptedAESKeyString;
         } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | IllegalBlockSizeException | BadPaddingException ex) {
             ex.printStackTrace();
         }
@@ -151,14 +179,11 @@ class ClientHandler implements Runnable {
 
     public void SendEncryptedAESKey() {
         try {
-            byte[] encryptedAESKeyBytes = AESKeyEncryptor();
-            
-            OutputStream outputStream = clientSocket.getOutputStream();
-            DataOutputStream dataOutputStream = new DataOutputStream(outputStream);
-            dataOutputStream.writeInt(encryptedAESKeyBytes.length);
-            dataOutputStream.write(encryptedAESKeyBytes);
-            dataOutputStream.flush();
-            
+        
+            String encryptedAESKeyString = AESKeyEncryptor();
+            writer.write(encryptedAESKeyString);
+            writer.newLine();
+            writer.flush();
         } catch (IOException ex) {
             ex.printStackTrace();
         }
