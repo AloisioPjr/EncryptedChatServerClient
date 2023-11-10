@@ -33,14 +33,17 @@ import javax.crypto.SecretKey;
  *
  * @author Alois
  */
+// Generates an AES key, encrypt with the client public key, and sends again to the client.
 public class EncryptedChatServer {
 
     public static void main(String[] args) {
         try {
+            //socket to listen for client connections
             ServerSocket serverSocket = new ServerSocket(12345);
             System.out.println("Server started. Waiting for clients...");
 
             while (true) {
+                //accept client connections
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Client connected: " + clientSocket.getInetAddress().getHostAddress());
 
@@ -55,7 +58,7 @@ public class EncryptedChatServer {
         }
     }
 }
-
+//class to generates an AES key, encrypts with client public key and send to client
 class ClientHandler implements Runnable {
 
     private Socket clientSocket;
@@ -82,10 +85,11 @@ class ClientHandler implements Runnable {
 
     @Override
     public void run() {
+        //send the encrypted aes key to the client
         SendEncryptedAESKey();
 
         try {
-
+            //listen for incoming messages
             String message = reader.readLine();
             //if !(message.toLowerCase().trim().equals("exit"))||
             while (((message != null))) {
@@ -93,7 +97,7 @@ class ClientHandler implements Runnable {
                 // Broadcast the message to all clients
                 // Modify this part to send messages to spe cific clients if needed
             }
-
+    
             if (message.equals("exit")) {
 
                 exit(0);
@@ -127,7 +131,7 @@ class ClientHandler implements Runnable {
         System.out.println("receivedPublicKey----->" + receivedPublicKey);
         return receivedPublicKey;
     }
-
+    //encrypt the AES key with the client public key
     public byte[] AESKeyEncryptor() {
 
         try {
@@ -146,11 +150,11 @@ class ClientHandler implements Runnable {
         }
         return null;
     }
-
+    //encrypt the AES key
     public void SendEncryptedAESKey() {
         try {
             byte[] encryptedAESKeyBytes = AESKeyEncryptor();
-            
+            // Send the length of the encrypted key and then the key bytes to the client
             OutputStream outputStream = clientSocket.getOutputStream();
             DataOutputStream dataOutputStream = new DataOutputStream(outputStream);
             dataOutputStream.writeInt(encryptedAESKeyBytes.length);
