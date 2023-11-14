@@ -4,43 +4,94 @@
  */
 package encryptedchat;
 
+import java.awt.event.*;
 import java.io.*;
 import static java.lang.System.exit;
 import java.net.*;
-import java.security.InvalidKeyException;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
-import java.security.PublicKey;
+import java.security.*;
 import java.util.Arrays;
-import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.SecretKey;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.crypto.*;
 import javax.crypto.spec.SecretKeySpec;
+import javax.swing.*;
 
 public class EncryptedChatClient {
 
     public static void main(String[] args) {
+            ClientFrame myFrame = new ClientFrame();
+            myFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+
+}
+
+class ClientFrame extends JFrame {
+
+    public ClientFrame() {
+        setBounds(600, 300, 280, 350);
+        ClientPanel myPanel = new ClientPanel();
+        add(myPanel);
+
+        setVisible(true);
+    }
+}
+
+class ClientPanel extends JPanel {
+
+    private JTextField messageTf;
+    private JButton sendBtn;
+    private JTextArea messageArea;
+    private Socket socket;
+    private ObjectOutputStream out;
+    private ObjectInputStream in;
+
+    public ClientPanel() {
+
+        JLabel text = new JLabel("CHAT");
+        add(text);
+        messageArea = new JTextArea(12, 20);
+        add(messageArea);
+        messageTf = new JTextField(20);
+        add(messageTf);
+        sendBtn = new JButton("Send");
+        //ClientSender myEvent = new ClientSender();
+        add(sendBtn);
+
+        sendBtn.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String message = messageTf.getText();
+                sendMessage(message);
+            }
+        });
+        
+
         try {
-            Socket socket = new Socket("localhost", 12345);
+            socket = new Socket("localhost", 12345);
             System.out.println("Connected to server.");
 
-            BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-            PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+            out = new ObjectOutputStream(socket.getOutputStream());
+            in = new ObjectInputStream(socket.getInputStream());
 
-            new Thread(new ClientReceiver(socket)).start();
+            new Thread(new ClientReceiver(socket, this)).start();
+           
 
-            String message;
-            while ((message = reader.readLine()) != null) {
-                writer.println(message);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch (IOException ex) {
+            System.out.println(ex.getMessage());
+        }
+
+    }
+    private void sendMessage (String message) {
+        try {
+            out.writeObject(message);
+            out.flush();
+            
+            messageTf.setText("");
+        } catch (IOException ex) {
+            System.out.println(ex.getMessage());
         }
     }
+
 }
 
 class ClientReceiver implements Runnable {
@@ -53,15 +104,14 @@ class ClientReceiver implements Runnable {
     private ObjectOutputStream objectOutputStream;
     private ObjectInputStream objectInputStream;
     //private PublicKey publicKey;
-    private PrintWriter writer;
     private SecretKey aesKey;
+    private ClientPanel clientPanel;
 
-    public ClientReceiver(Socket socket) {
+    public ClientReceiver(Socket socket, ClientPanel clientPanel) {
         this.socket = socket;
+        this.clientPanel = clientPanel;
         try {
-            reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            writer = new PrintWriter(socket.getOutputStream(), true);
-
+            
             objectOutputStream = new ObjectOutputStream(socket.getOutputStream());//to send
             objectInputStream = new ObjectInputStream(socket.getInputStream());//to receive
         } catch (IOException e) {
@@ -73,21 +123,21 @@ class ClientReceiver implements Runnable {
     public void run() {
         RSAKeyGenerator();
         SendPublicKey(publicKey);
-
         DecryptedAESKey();
-        
+
         try {
-            String message = reader.readLine();
+            String message;
 
-            while ((message != null)) {
+            while ((message = (String) objectInputStream.readObject()) != null) {
                 System.out.println("Received: " + message);
-            }
-            if (message.equals("exit")) {
-
-                exit(0);
+                if (message.equals("exit")) {
+                    exit(0);
+                }
             }
         } catch (IOException e) {
             e.printStackTrace();
+        } catch (ClassNotFoundException ex) {
+            Logger.getLogger(ClientReceiver.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -100,16 +150,14 @@ class ClientReceiver implements Runnable {
             publicKey = keyPair.getPublic();
             System.out.println("publicKey----->" + publicKey);
             privateKey = keyPair.getPrivate();
-        System.out.println("privateKey----->" + privateKey);
+            System.out.println("privateKey----->" + privateKey);
         } catch (NoSuchAlgorithmException ex) {
             ex.printStackTrace();
         }
 
-        
     }
-    
 
-    public void SendPublicKey(PublicKey publicKey) {
+    public void SendPublicKey(PublicKey publicKey1) {
         try {
             objectOutputStream.writeObject(publicKey);
         } catch (IOException ex) {
@@ -138,20 +186,18 @@ class ClientReceiver implements Runnable {
         try {
 
             byte[] receivedEncryptedAESKey = receivedEncryptedAESKey();
-            
-            
+
             Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
             cipher.init(Cipher.DECRYPT_MODE, privateKey);
 
             byte[] decryptedAESKeyBytes = cipher.doFinal(receivedEncryptedAESKey);
-             
+
             aesKey = new SecretKeySpec(decryptedAESKeyBytes, "AES");
-            System.out.println("encryptedAESKeyBytes----->" +(aesKey));
-           
+            System.out.println("encryptedAESKeyBytes----->" + (aesKey));
 
         } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | IllegalBlockSizeException | BadPaddingException ex) {
             ex.printStackTrace();
         }
-        
+
     }
 }

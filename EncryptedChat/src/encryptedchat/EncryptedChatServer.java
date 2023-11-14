@@ -4,30 +4,13 @@
  */
 package encryptedchat;
 
-import java.io.BufferedReader;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
-import java.io.PrintWriter;
+import java.io.*;
 import static java.lang.System.exit;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.PublicKey;
+import java.net.*;
+import java.security.*;
 import java.util.Arrays;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.KeyGenerator;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.SecretKey;
+import javax.crypto.*;
+import javax.swing.*;
 
 /**
  *
@@ -36,6 +19,10 @@ import javax.crypto.SecretKey;
 public class EncryptedChatServer {
 
     public static void main(String[] args) {
+
+        ServerFrame myFrame = new ServerFrame();
+
+        myFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         try {
             ServerSocket serverSocket = new ServerSocket(12345);
             System.out.println("Server started. Waiting for clients...");
@@ -56,6 +43,50 @@ public class EncryptedChatServer {
     }
 }
 
+class ServerFrame extends JFrame {
+
+    private JTextArea messageArea;
+
+    public ServerFrame() {
+        setBounds(1200, 300, 280, 350);
+
+        ServerPanel myPanel = new ServerPanel();
+        messageArea = myPanel.getMessageArea();
+        add(myPanel);
+
+        setVisible(true);
+    }
+
+    
+
+}
+
+class ServerPanel extends JPanel {
+
+    private JTextField messageTf;
+    private JButton sendBtn;
+    private JTextArea messageArea;
+
+    public ServerPanel() {
+
+        JLabel text = new JLabel("CHAT (server)");
+        add(text);
+        messageArea = new JTextArea(12, 20);
+        add(messageArea);
+        messageTf = new JTextField(20);
+        add(messageTf);
+        sendBtn = new JButton("Send");
+        //ClientHandler myEvent = new ClientHandler();
+        add(sendBtn);
+
+    }
+
+    JTextArea getMessageArea() {
+        return messageArea;
+    }
+
+}
+
 class ClientHandler implements Runnable {
 
     private Socket clientSocket;
@@ -64,9 +95,12 @@ class ClientHandler implements Runnable {
     private ObjectOutputStream objectOutputStream;
     private ObjectInputStream objectInputStream;
     private SecretKey aesKey;
+    private JTextArea messageArea;
 
     public ClientHandler(Socket socket) {
+
         this.clientSocket = socket;
+        this.messageArea = messageArea;
         try {
             reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
             writer = new PrintWriter(clientSocket.getOutputStream(), true);
@@ -86,15 +120,16 @@ class ClientHandler implements Runnable {
 
         try {
 
-            String message = reader.readLine();
+            String message;
             //if !(message.toLowerCase().trim().equals("exit"))||
-            while (((message != null))) {
+            while ((message = reader.readLine()) != null) {
                 System.out.println("Received: " + message);
                 // Broadcast the message to all clients
                 // Modify this part to send messages to spe cific clients if needed
+                appendToMessageArea("Received: " + message);
             }
 
-            if (message.equals("exit")) {
+            if (message == null || message.equals("exit")) {
 
                 exit(0);
             }
@@ -106,7 +141,7 @@ class ClientHandler implements Runnable {
     public static SecretKey AESKeyGenerator() {
         SecretKey aesKey = null;
         try {
-            
+
             KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
             keyGenerator.init(256);
             aesKey = keyGenerator.generateKey();
@@ -138,7 +173,7 @@ class ClientHandler implements Runnable {
             cipher.init(Cipher.ENCRYPT_MODE, receivedPublicKey);
             byte[] encryptedAESKeyBytes = cipher.doFinal(aesKey.getEncoded());//TODO: try changing to .getBytes()
 
-            System.out.println("encryptedAESKeyBytes----->" + Arrays.toString( encryptedAESKeyBytes));
+            System.out.println("encryptedAESKeyBytes----->" + Arrays.toString(encryptedAESKeyBytes));
 
             return encryptedAESKeyBytes;
         } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | IllegalBlockSizeException | BadPaddingException ex) {
@@ -150,15 +185,22 @@ class ClientHandler implements Runnable {
     public void SendEncryptedAESKey() {
         try {
             byte[] encryptedAESKeyBytes = AESKeyEncryptor();
-            
+
             OutputStream outputStream = clientSocket.getOutputStream();
             DataOutputStream dataOutputStream = new DataOutputStream(outputStream);
             dataOutputStream.writeInt(encryptedAESKeyBytes.length);
             dataOutputStream.write(encryptedAESKeyBytes);
             dataOutputStream.flush();
-            
+
         } catch (IOException ex) {
             ex.printStackTrace();
         }
+    }
+
+    private void appendToMessageArea(String message) {
+        SwingUtilities.invokeLater(() -> {
+            messageArea.append(message + "\n");
+
+        });
     }
 }
